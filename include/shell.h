@@ -5,6 +5,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <fcntl.h> /* open(), O_RDONLY / O_WRONLY / O_CREAT / O_TRUNC (F5) */
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <errno.h>
@@ -18,7 +19,10 @@
 // Function prototypes
 char* read_cmd(char* prompt, FILE* fp);
 char** tokenize(char* cmdline);
+void free_arglist(char** arglist);
 int execute(char** arglist);
+/* Feature 5: run "left | right" as a two-process pipeline. */
+int execute_pipe(char** left, char** right);
 int handle_builtin(char** arglist);
 
 /* Feature 3 - command history */

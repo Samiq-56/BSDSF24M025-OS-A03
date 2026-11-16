@@ -20,8 +20,7 @@ char* read_cmd(char* prompt, FILE* fp) {
     return readline(prompt);
 }
 
-char** tokenize(char* cmdline) {
-    // Edge case: empty command line
+char** tokenize(char* cmdline) {    // Edge case: empty command line
     if (cmdline == NULL || cmdline[0] == '\0' || cmdline[0] == '\n') {
         return NULL;
     }
@@ -60,6 +59,18 @@ char** tokenize(char* cmdline) {
 
     arglist[argnum] = NULL;
     return arglist;
+}
+
+/* Free every string tokenize() allocated, then the array itself. */
+void free_arglist(char** arglist) {
+    int i;
+    if (arglist == NULL) {
+        return;
+    }
+    for (i = 0; arglist[i] != NULL; i++) {
+        free(arglist[i]);
+    }
+    free(arglist);
 }
 
 /*

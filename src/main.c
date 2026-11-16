@@ -33,6 +33,33 @@ int main() {
             }
         }
 
+        /* Feature 5: pipe. If the line contains '|', split it into two
+           commands at the pipe, tokenize each side separately and run
+           them through execute_pipe(). The split happens here, before
+           tokenize(), so neither side's argument list contains '|'.
+           (Only one pipe per line is supported; a second '|' would land
+           inside the right side's token and fail as "Command not found".
+           Built-ins do not work inside a pipe - both sides are exec'd.) */
+        {
+            char* pipe_pos = strchr(cmdline, '|');
+            if (pipe_pos != NULL) {
+                char** left;
+                char** right;
+                *pipe_pos = '\0'; /* cut the line in two, in place */
+                left = tokenize(cmdline);
+                right = tokenize(pipe_pos + 1);
+                if (left != NULL && right != NULL) {
+                    execute_pipe(left, right);
+                } else {
+                    fprintf(stderr, "myshell: syntax error near '|'\n");
+                }
+                free_arglist(left);
+                free_arglist(right);
+                free(cmdline);
+                continue;
+            }
+        }
+
         if ((arglist = tokenize(cmdline)) != NULL) {
             /* Built-ins run in the shell itself, before any fork().
                Only external commands reach execute(). */
@@ -40,11 +67,7 @@ int main() {
                 execute(arglist);
             }
 
-            // Free the memory allocated by tokenize()
-            for (int i = 0; arglist[i] != NULL; i++) {
-                free(arglist[i]);
-            }
-            free(arglist);
+            free_arglist(arglist);
         }
         free(cmdline);
     }
