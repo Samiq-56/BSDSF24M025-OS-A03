@@ -1,22 +1,23 @@
 #include "shell.h"
+#include <readline/readline.h>
+#include <readline/history.h>
 
+/*
+ * Feature 4 - input via GNU Readline (replaces the starter's getc loop).
+ *
+ * readline() prints the prompt, reads one line with full line editing,
+ * and returns a malloc'd string (NULL on EOF / Ctrl-D, same contract as
+ * before, so the main loop is unchanged). Tab completion and up/down
+ * history come free: readline's default completion completes file and
+ * command names, and the arrow keys cycle through readline's history
+ * list, which the main loop feeds with add_history() after each command.
+ *
+ * The fp parameter is kept so the signature matches the starter code;
+ * readline() always reads from stdin.
+ */
 char* read_cmd(char* prompt, FILE* fp) {
-    printf("%s", prompt);
-    char* cmdline = (char*) malloc(sizeof(char) * MAX_LEN);
-    int c, pos = 0;
-
-    while ((c = getc(fp)) != EOF) {
-        if (c == '\n') break;
-        cmdline[pos++] = c;
-    }
-
-    if (c == EOF && pos == 0) {
-        free(cmdline);
-        return NULL; // Handle Ctrl+D
-    }
-    
-    cmdline[pos] = '\0';
-    return cmdline;
+    (void) fp; /* readline() reads stdin itself */
+    return readline(prompt);
 }
 
 char** tokenize(char* cmdline) {
