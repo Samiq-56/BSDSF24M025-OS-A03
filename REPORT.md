@@ -252,7 +252,81 @@ commit `5e75a91`, temp dir `/tmp/f5test`):**
 
 ## Feature 6 — Command Chaining and Background Execution (Release 6, tag `v6`, 15 marks)
 
-_Pending._
+**What was implemented (PDF §Feature-6, pp. 8–9):**
+- `;` chaining — the main loop splits each input line into segments at
+  `;` (and at `&`, see below) and runs them one after another;
+  `execute()` `waitpid()`s each foreground command, so the next segment
+  only starts after the previous one finishes.
+- `&` background — a segment terminated by `&` runs in the background:
+  the parent does NOT `waitpid()`; it records the child's PID in the
+  jobs list, prints `[n] <pid>` (bash style), and returns to the prompt
+  at once. `&` also works as a mid-line separator
+  (`sleep 1 & echo done` runs echo immediately).
+- `jobs` built-in (real now, was the F2 placeholder) lists live
+  background jobs as `[n]  <pid>  <command>`; empty list prints
+  `No background jobs.`
+- Zombie reaping — `reap_zombies()` runs before every prompt and loops
+  `waitpid(-1, &status, WNOHANG)` (non-blocking, so the shell never
+  freezes); each reaped PID is removed from the jobs list and a
+  `[n] Done <cmd>` line is printed. Foreground children are never
+  reaped here — `execute()` already `waitpid()`s its own child.
+
+**How (key functions / syscalls):**
+- `src/main.c` — `run_single_command(segment, background)` (per-segment:
+  pipe check → built-in → `execute(arglist, background)`); the main
+  loop splits the line at `;`/`&` in place and calls it per segment.
+  `trim_segment()` strips leading/trailing blanks per segment.
+- `src/jobs.c` (new module) — fixed array of 64 `Job { pid, number,
+  cmd }` entries; `add_job()` / `remove_job()` / `print_jobs()` /
+  `reap_zombies()`; job numbers are sequential (1, 2, 3, …) and never
+  reused within a session.
+- `src/execute.c` — `execute(arglist, background)`: background parent
+  builds the jobs display string by re-joining the clean argv and
+  calls `add_job()`; foreground parent unchanged (`waitpid`).
+- `src/builtin.c` — `jobs` now calls `print_jobs()`; `help` text
+  updated (`jobs` no longer "not yet implemented").
+- `include/shell.h` — `MAX_JOBS 64`, new prototypes, `execute()` gained
+  the `background` parameter.
+- Extra: a background pipe (`cmd1 | cmd2 &`) runs in one extra forked
+  child that calls `execute_pipe()` and `_exit()`s; the parent tracks
+  that child PID as the job (the full pipeline text is shown in `jobs`
+  — the `|` is restored after tokenizing). A built-in followed by `&`
+  (e.g. `cd /tmp &`) runs in the foreground, since built-ins execute
+  in the shell process itself and there is no child to background.
+  `fflush(stdout)` after every `[n] pid` / `Done` message, so piped
+  (non-TTY) output stays in order — a forked child inherits the stdio
+  buffer otherwise.
+
+**Known limits (not in the PDF):** `&&` / `||` are not implemented —
+`a && b` behaves like `a & b` (the empty segment between the two `&`
+is skipped). Quoted strings are still not parsed (pre-existing base
+behaviour): the PDF example `echo "First command" ; …` runs and
+chains correctly, but prints the quotes literally (`"First command"`).
+
+**Test evidence (2026-11-17 ~03:05–03:15 PKT, branch
+`feature-multitasking`, commit `1ec2ac9`, temp dir `/tmp/f6test`):**
+- `make clean && make` — clean build, **no errors, no warnings**.
+- Chaining: `echo first ; sleep 1 ; echo second` printed `first`,
+  waited, printed `second`; PDF example with quotes chained correctly.
+- Background + jobs + reaping: `sleep 2 &` printed `[1] 4151` and the
+  prompt returned at once; `jobs` showed `[1]  4151  sleep 2`; after a
+  foreground `sleep 3`, `[1] Done sleep 2` appeared before the next
+  prompt and `jobs` printed `No background jobs.`
+- `&` as separator: `sleep 1 & echo bg-separator-works` printed the
+  echo output immediately while the sleep ran as job `[2]`.
+- Background pipe: `sleep 2 | cat &` → job `[3]`, `jobs` listed
+  `[3]  4160  sleep 2 | cat`; both jobs reaped with `Done` lines after
+  a foreground `sleep 3`.
+- `!n` on a chained line: `!1` re-ran `pwd ; whoami` (both segments).
+- Regression (F2–F5): `pwd ; whoami` (chained built-in + external),
+  `history` (whole chained lines stored as single entries, numbered
+  from 1), `echo hi > f6.txt` + `sort < f6.txt`, `cat /etc/passwd |
+  grep root` → `root:x:0:0:root:/root:/bin/bash`; `exit` printed
+  "Shell exited.", shell exit code 0.
+- No zombies: `ps aux | grep defunct` after exit showed none.
+- Release: tag `v6` (annotated), merged to main (`4d7f806`),
+  [Release 6](https://github.com/UsmanXTech/BSDSF24M025-OS-A03/releases/tag/v6)
+  with compiled `bin/myshell` asset (22,416 bytes).
 
 ---
 
