@@ -89,7 +89,52 @@ exiting a child would leave the shell running (`exit`).
 
 ## Feature 3 — Command History (Release 3, tag `v3`, 10 marks)
 
-_Pending — next run._
+**What was done:** The shell now remembers commands. A `history` built-in
+lists stored commands with line numbers starting from 1, and `!n`
+re-executes history entry number `n`.
+
+**How it was implemented:**
+- Storage: a plain array `char* history[HISTORY_SIZE]` with
+  `HISTORY_SIZE 20` in `src/shell.c`, plus `hist_count` (how many are
+  stored). When the array is full, the oldest entry (index 0) is freed
+  and the rest shift one slot left (`memmove`), so the newest command
+  always lands in the last slot — the last 20 commands are kept.
+- `add_to_history()` (in `shell.c`) stores a copy of each command line
+  read by the main loop. Empty / whitespace-only lines are skipped, so
+  they never take up a history slot.
+- `history` built-in: added to `handle_builtin()` in `src/builtin.c`;
+  it calls `print_history()`, which prints `%d  %s` — line number from 1,
+  then the command.
+- `!n` re-execution: handled in the `main.c` loop BEFORE tokenization
+  and BEFORE adding anything to history, exactly as the PDF requires —
+  the literal `!n` text is never stored. `expand_history()` (in
+  `shell.c`) parses `n` with `strtol()`, returns a fresh copy of entry
+  `n`, and the loop proceeds as if the user had typed that command
+  directly (so the re-executed command IS added to history, like bash).
+  A non-numeric `!` (`!abc`) or an out-of-bounds number (`!0`, `!99`
+  when fewer entries exist) prints
+  `myshell: !n: event not found` and the line is skipped.
+- `help` now lists `history` and the `!n` syntax.
+
+**Test evidence** (scripted piped input, all passed):
+1. `printf 'echo one\necho two\necho three\nhistory\n!2\nhistory\n!99\n!0\n!abc\nexit\n' | ./bin/myshell`
+   — `history` listed `1 echo one` … `4 history`; `!2` re-ran `echo two`
+   (printed `two` again); the second `history` showed the re-executed
+   `echo two` stored as entry 5 (not the literal `!2`); `!99`, `!0` and
+   `!abc` each printed `myshell: !n: event not found` on stderr and the
+   shell kept running.
+2. 25 `echo cmdNN` commands followed by `history` — exactly 20 entries
+   shown, oldest `1 echo cmd07` (cmd01–cmd06 dropped, `history` itself
+   stored as entry 20). Proves the overwrite-oldest rule.
+3. `printf '\n\necho first\n\nhelp\nhistory\n!1\nexit\n' | ./bin/myshell`
+   — blank lines produced no history entries (`history` showed only
+   `1 echo first`, `2 help`, `3 history`); `!1` re-ran `echo first`;
+   `help` lists `history` and the `!n` hint.
+
+**Build:** `make` clean — no errors, no warnings (`-Wall -Wextra -std=c11`).
+
+**Release:** [Release 3 - Command History](https://github.com/UsmanXTech/BSDSF24M025-OS-A03/releases/tag/v3)
+(tag `v3`, binary `myshell` attached).
 
 ---
 
