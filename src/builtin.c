@@ -50,8 +50,16 @@ int handle_builtin(char** arglist) {
         printf("  exit            Terminate the shell\n");
         printf("  cd <directory>  Change the current working directory\n");
         printf("  help            Show this help message\n");
+        printf("  history         List previous commands with line numbers\n");
         printf("  jobs            List background jobs (not yet implemented)\n");
+        printf("Use !n to re-execute history entry number n.\n");
         printf("Any other command is run as an external program.\n");
+        return 1;
+    }
+
+    /* history: list stored commands with line numbers from 1. */
+    if (strcmp(arglist[0], "history") == 0) {
+        print_history();
         return 1;
     }
 
