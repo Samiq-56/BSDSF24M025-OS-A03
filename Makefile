@@ -1,6 +1,6 @@
 CC = gcc
 CFLAGS = -Wall -Wextra -std=c11 -Iinclude
-LDFLAGS =
+LDFLAGS = -lreadline # Feature 4: GNU Readline (tab completion + line editing)
 
 SRC_DIR = src
 OBJ_DIR = obj

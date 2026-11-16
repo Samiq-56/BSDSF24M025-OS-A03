@@ -1,4 +1,5 @@
 #include "shell.h"
+#include <readline/history.h> /* Feature 4: add_history() */
 
 int main() {
     char* cmdline;
@@ -20,6 +21,17 @@ int main() {
 
         /* Feature 3: store the command (empty lines are skipped inside). */
         add_to_history(cmdline);
+
+        /* Feature 4: the same (resolved) line goes into readline's own
+           history list, so the up/down arrow keys cycle through past
+           commands. Whitespace-only lines are skipped, like Feature 3. */
+        {
+            const char* p = cmdline;
+            while (*p == ' ' || *p == '\t') p++;
+            if (*p != '\0') {
+                add_history(cmdline);
+            }
+        }
 
         if ((arglist = tokenize(cmdline)) != NULL) {
             /* Built-ins run in the shell itself, before any fork().
