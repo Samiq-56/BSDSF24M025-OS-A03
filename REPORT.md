@@ -140,7 +140,45 @@ re-executes history entry number `n`.
 
 ## Feature 4 — Tab Completion with GNU Readline (Release 4, tag `v4`, 15 marks)
 
-_Pending._
+**What was implemented:** the starter's `getc` input loop was replaced with
+the GNU Readline library, giving the shell professional line editing: Tab
+completion (default readline completion — file/command names) and up/down
+arrow-key history navigation.
+
+**How (key functions / changes):**
+- `src/shell.c` — `read_cmd()` now just calls `readline(prompt)`. Readline
+  prints the prompt, reads the line and returns a `malloc`'d string
+  (`NULL` on EOF / Ctrl-D, same contract as before, so the main loop is
+  unchanged). The `fp` parameter is kept so the signature matches the
+  starter code; readline always reads from stdin. Includes added:
+  `#include <readline/readline.h>` and `#include <readline/history.h>`.
+- `src/main.c` — after each command is read (and after any `!n` expansion,
+  so the *resolved* line is stored, matching Feature 3), the line is fed
+  to readline's own history with `add_history(cmdline)` — non-empty lines
+  only (whitespace-only skipped, like Feature 3). This is what the
+  up/down arrows cycle through; the `history` built-in still prints from
+  the shell's own Feature 3 array, and both lists stay in sync.
+- `Makefile` — `LDFLAGS = -lreadline`. Build needs the `libreadline-dev`
+  package (headers); it was installed on this machine with
+  `sudo apt-get install -y libreadline-dev` (runtime `libreadline8` was
+  already present). No custom completion function was written — the PDF
+  says to start with readline's default completion behaviour.
+
+**Test evidence (2026-11-16, branch `feature-readline`, commit `1a04f61`):**
+- `make clean && make` — clean build, **no errors, no warnings**.
+- Scripted piped input
+  (`printf 'echo hello-readline\npwd\nhistory\n!1\nexit\n' | ./bin/myshell`)
+  works with readline: prompt printed, `echo`/`pwd` ran, `history` listed
+  3 commands, `!1` re-ran `echo hello-readline`, `exit` printed
+  "Shell exited." — Feature 3 behaviour unchanged.
+- Interactive PTY test (Python `pty` module): typed `echo arrow-works`,
+  pressed Up-arrow — the line `echo arrow-works` reappeared; Enter
+  re-ran it and printed `arrow-works`. Typed `READ` + Tab — completed to
+  `README.md `; typed `ls src/exe` + Tab — completed to
+  `ls src/execute.c `. Ctrl-D printed "Shell exited." with exit code 0.
+- Release: tag `v4` (annotated), merged to main (`bb5d017`),
+  [Release 4](https://github.com/UsmanXTech/BSDSF24M025-OS-A03/releases/tag/v4)
+  with compiled `bin/myshell` asset (17,408 bytes).
 
 ---
 
