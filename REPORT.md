@@ -184,7 +184,69 @@ arrow-key history navigation.
 
 ## Feature 5 — I/O Redirection and Pipes (Release 5, tag `v5`, 15 marks)
 
-_Pending._
+**What was implemented:** `>` output redirection, `<` input redirection,
+and `|` pipes, exactly as the PDF specifies — all by manipulating file
+descriptors in the child process, after `fork()` but before `execvp()`,
+so the shell's own stdin/stdout are never touched.
+
+- `src/execute.c` — `parse_redirection()` (shared helper) scans the
+  argument list for `<` / `>` tokens, records the filenames, and builds
+  a clean `argv` with the operators and filenames removed (so the program
+  never sees them); a missing filename prints
+  `myshell: syntax error: missing filename after '>'` (or `'<'`) and the
+  command is not run. `setup_redirection()` does the fd work:
+  `open(file, O_WRONLY | O_CREAT | O_TRUNC, 0644)` + `dup2(fd,
+  STDOUT_FILENO)` for `>`, `open(file, O_RDONLY)` + `dup2(fd,
+  STDIN_FILENO)` for `<`, then `close(fd)`. A file that cannot be opened
+  prints `perror` and exits only the child (status 1) — the shell survives.
+  `execute_pipe()` calls `pipe()` once in the parent, forks twice: the
+  left child `dup2()`s the pipe write end onto its stdout, the right
+  child `dup2()`s the read end onto its stdin, and **all unused pipe ends
+  are closed in all three processes** (both children + parent) — if the
+  parent kept the write end open, the reader would never see EOF and the
+  pipe would hang. The parent `waitpid()`s both children. Each pipe side
+  runs the same `parse_redirection()`/`setup_redirection()`, so a side
+  may also redirect (e.g. `cat < file | grep x > out`).
+- `src/main.c` — when the line contains `|`, it is split at the pipe
+  *before* tokenizing and both sides are tokenized separately and run
+  through `execute_pipe()` (an empty side prints `syntax error near '|'`).
+  Only one pipe per line is supported; a second `|` would land inside the
+  right side's token. Built-ins do not work inside a pipe (both sides are
+  `execvp`'d) — the PDF's pipe example uses external commands only.
+- `src/shell.c` / `include/shell.h` — `free_arglist()` helper (frees every
+  token + the array) shared by the normal and pipe paths; `#include
+  <fcntl.h>` for `open()` flags. No Makefile change was needed
+  (`-lreadline` from Feature 4 is unchanged).
+
+**Environment note:** this run's sandbox had lost the `libreadline-dev`
+headers (F4 had installed them; the VM was reset since). `apt-get update`
+hung for 10+ minutes on a slow proxy mirror, so the headers were
+installed directly instead: the matching `libreadline-dev_8.2-4build1`
+.deb was downloaded from archive.ubuntu.com and installed with
+`sudo dpkg -i` (its dependency `libncurses-dev` was already present).
+Build is unaffected on a machine where `libreadline-dev` is installed
+normally.
+
+**Test evidence (2026-11-17 ~01:20 PKT, branch `feature-io-redirection`,
+commit `5e75a91`, temp dir `/tmp/f5test`):**
+- `make clean && make` — clean build, **no errors, no warnings**.
+- PDF examples, all pass: `ls -l > file_list.txt` created `file_list.txt`
+  with the correct `ls -l` output; `sort < file_list.txt` printed the
+  lines sorted; `cat /etc/passwd | grep root` printed
+  `root:x:0:0:root:/root:/bin/bash`.
+- Combinations: `cat < out.txt | grep hello` printed `hello`;
+  `cat /etc/passwd | grep root > roots.txt` wrote the root line into
+  `roots.txt`. No hang in any pipe test (parent closes both pipe ends).
+- Error cases (shell survived every one, exit code 0 at the end):
+  `sort < missing.txt` → `missing.txt: No such file or directory`;
+  `echo oops >` → `myshell: syntax error: missing filename after '>'`;
+  `| grep x` → `myshell: syntax error near '|'`.
+- Regression (F2–F4): `pwd`, `history` (14 entries, numbered from 1),
+  `!2` re-ran `sort < file_list.txt` correctly, `exit` printed
+  "Shell exited.".
+- Release: tag `v5` (annotated), merged to main (`4f2511e`),
+  [Release 5](https://github.com/UsmanXTech/BSDSF24M025-OS-A03/releases/tag/v5)
+  with compiled `bin/myshell` asset (21,872 bytes).
 
 ---
 
