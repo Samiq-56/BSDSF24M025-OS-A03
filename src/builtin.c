@@ -51,7 +51,7 @@ int handle_builtin(char** arglist) {
         printf("  cd <directory>  Change the current working directory\n");
         printf("  help            Show this help message\n");
         printf("  history         List previous commands with line numbers\n");
-        printf("  jobs            List background jobs (not yet implemented)\n");
+        printf("  jobs            List background jobs with their PIDs\n");
         printf("Use !n to re-execute history entry number n.\n");
         printf("Any other command is run as an external program.\n");
         return 1;
@@ -63,9 +63,11 @@ int handle_builtin(char** arglist) {
         return 1;
     }
 
-    /* jobs: placeholder until Feature 6 adds real job control. */
+    /* jobs (Feature 6): list live background jobs with PIDs.
+       Finished jobs are already removed by reap_zombies(), which runs
+       before every prompt. */
     if (strcmp(arglist[0], "jobs") == 0) {
-        printf("Job control not yet implemented.\n");
+        print_jobs();
         return 1;
     }
 

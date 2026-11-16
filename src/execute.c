@@ -93,7 +93,18 @@ static void setup_redirection(const char* infile, const char* outfile) {
     }
 }
 
-int execute(char* arglist[]) {
+/*
+ * execute - fork + execvp one external command.
+ *
+ * background = 0 (foreground): the parent waitpid()s for the child
+ *   before returning, so the shell blocks until the command finishes.
+ * background = 1 (Feature 6, command ended with '&'): the parent
+ *   does NOT wait - it records the child's PID in the jobs list with
+ *   add_job(), prints "[n] <pid>" like bash, and returns at once so
+ *   the prompt comes back immediately. The child is reaped later by
+ *   reap_zombies() (waitpid(-1, WNOHANG) before each prompt).
+ */
+int execute(char* arglist[], int background) {
     int status;
     int cpid;
     char* infile;
@@ -121,6 +132,32 @@ int execute(char* arglist[]) {
             perror("Command not found"); // This line runs only if execvp fails
             exit(1);
         default: // Parent process
+            if (background) {
+                /* Build a display string for the jobs list by joining
+                   the clean argv back together with spaces. */
+                char cmdtext[MAX_LEN];
+                int n = 0, i;
+                cmdtext[0] = '\0';
+                for (i = 0; i < argc; i++) {
+                    n += snprintf(cmdtext + n, (size_t) (MAX_LEN - n),
+                                  "%s%s", i > 0 ? " " : "", argv[i]);
+                    if (n >= MAX_LEN - 1) {
+                        break; /* truncated, still NUL-terminated */
+                    }
+                }
+                {
+                    int jobnum = add_job(cpid, cmdtext);
+                    if (jobnum > 0) {
+                        printf("[%d] %d\n", jobnum, (int) cpid);
+                        /* Flush now: the next forked child inherits
+                           the stdio buffer, and without this the
+                           "[n] pid" line could appear after the
+                           next command's output in piped runs. */
+                        fflush(stdout);
+                    }
+                }
+                return 0; /* prompt returns at once, no waiting */
+            }
             waitpid(cpid, &status, 0);
             // printf("Child pid:%d exited with status %d\n", cpid, status >> 8);
             return 0;

@@ -15,12 +15,14 @@
 #define ARGLEN 30
 #define PROMPT "FCIT> "
 #define HISTORY_SIZE 20 /* keep at least the last 20 commands (Feature 3) */
+#define MAX_JOBS 64     /* max tracked background jobs (Feature 6) */
 
 // Function prototypes
 char* read_cmd(char* prompt, FILE* fp);
 char** tokenize(char* cmdline);
 void free_arglist(char** arglist);
-int execute(char** arglist);
+/* background = 1: do not waitpid(), record the child as a job (F6). */
+int execute(char** arglist, int background);
 /* Feature 5: run "left | right" as a two-process pipeline. */
 int execute_pipe(char** left, char** right);
 int handle_builtin(char** arglist);
@@ -32,5 +34,11 @@ void print_history(void);
 /* Expand a "!n" line into a copy of history entry n (1-based).
    Returns NULL and prints an error if n is not a valid history number. */
 char* expand_history(const char* cmdline);
+
+/* Feature 6 - background jobs (src/jobs.c) */
+int add_job(pid_t pid, const char* cmd); /* returns job number, or -1 */
+void remove_job(pid_t pid);
+void print_jobs(void);   /* the `jobs` built-in */
+void reap_zombies(void); /* waitpid(-1, WNOHANG) loop before each prompt */
 
 #endif // SHELL_H
