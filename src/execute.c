@@ -98,11 +98,14 @@ static void setup_redirection(const char* infile, const char* outfile) {
  *
  * background = 0 (foreground): the parent waitpid()s for the child
  *   before returning, so the shell blocks until the command finishes.
+ *   Returns the child's exit status (WEXITSTATUS): Feature 7's
+ *   if-condition is judged by this value (0 = success).
  * background = 1 (Feature 6, command ended with '&'): the parent
  *   does NOT wait - it records the child's PID in the jobs list with
  *   add_job(), prints "[n] <pid>" like bash, and returns at once so
  *   the prompt comes back immediately. The child is reaped later by
  *   reap_zombies() (waitpid(-1, WNOHANG) before each prompt).
+ *   Returns 0 (the job's status is not known yet).
  */
 int execute(char* arglist[], int background) {
     int status;
@@ -160,7 +163,10 @@ int execute(char* arglist[], int background) {
             }
             waitpid(cpid, &status, 0);
             // printf("Child pid:%d exited with status %d\n", cpid, status >> 8);
-            return 0;
+            /* Feature 7: report the child's real exit code so an
+               if-condition can be judged (0 = success). A child
+               killed by a signal counts as failure (status 1). */
+            return WIFEXITED(status) ? WEXITSTATUS(status) : 1;
     }
 }
 
@@ -170,11 +176,14 @@ int execute(char* arglist[], int background) {
  * Parent calls pipe() once, then forks twice. Left child writes into
  * the pipe, right child reads from it, parent closes both ends (so
  * the reader gets EOF when the writer exits) and waits for both.
+ * Returns the RIGHT child's exit status (bash rule: a pipeline's
+ * status is its last command's status) - Feature 7 judges a piped
+ * if-condition by this value.
  */
 int execute_pipe(char** left, char** right) {
     int pipefd[2]; /* pipefd[0] = read end, pipefd[1] = write end */
     pid_t left_pid, right_pid;
-    int status;
+    int left_status, right_status;
 
     if (pipe(pipefd) == -1) {
         perror("pipe failed");
@@ -230,7 +239,7 @@ int execute_pipe(char** left, char** right) {
        otherwise the right child would never see end-of-input. */
     close(pipefd[0]);
     close(pipefd[1]);
-    waitpid(left_pid, &status, 0);
-    waitpid(right_pid, &status, 0);
-    return 0;
+    waitpid(left_pid, &left_status, 0);
+    waitpid(right_pid, &right_status, 0);
+    return WIFEXITED(right_status) ? WEXITSTATUS(right_status) : 1;
 }
