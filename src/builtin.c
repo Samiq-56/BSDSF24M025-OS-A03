@@ -52,6 +52,9 @@ int handle_builtin(char** arglist) {
         printf("  help            Show this help message\n");
         printf("  history         List previous commands with line numbers\n");
         printf("  jobs            List background jobs with their PIDs\n");
+        printf("  if ... then ... else ... fi   Multi-line conditional:\n");
+        printf("                  runs the then-block if the if-command exits 0,\n");
+        printf("                  else the else-block (else is optional).\n");
         printf("Use !n to re-execute history entry number n.\n");
         printf("Any other command is run as an external program.\n");
         return 1;
