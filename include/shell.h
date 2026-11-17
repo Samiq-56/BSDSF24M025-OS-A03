@@ -41,4 +41,14 @@ void remove_job(pid_t pid);
 void print_jobs(void);   /* the `jobs` built-in */
 void reap_zombies(void); /* waitpid(-1, WNOHANG) loop before each prompt */
 
+/* Feature 8 - shell variables (src/variables.c, linked list) */
+void set_variable(const char* name, const char* value);
+const char* get_variable(const char* name); /* NULL if undefined;
+                                                falls back to getenv() */
+void print_variables(void); /* the `set` built-in */
+int is_assignment_line(const char* line); /* VARNAME=value ? */
+void handle_assignment(const char* line); /* store it, no fork */
+void expand_variables(char** arglist); /* $VARNAME -> value, after
+                                          tokenizing, before executing */
+
 #endif // SHELL_H

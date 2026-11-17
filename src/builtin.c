@@ -52,6 +52,9 @@ int handle_builtin(char** arglist) {
         printf("  help            Show this help message\n");
         printf("  history         List previous commands with line numbers\n");
         printf("  jobs            List background jobs with their PIDs\n");
+        printf("  set             List all shell variables (NAME=value)\n");
+        printf("  VARNAME=value   Assign a variable (no spaces around =)\n");
+        printf("  $VARNAME        Expand a variable before executing\n");
         printf("  if ... then ... else ... fi   Multi-line conditional:\n");
         printf("                  runs the then-block if the if-command exits 0,\n");
         printf("                  else the else-block (else is optional).\n");
@@ -71,6 +74,12 @@ int handle_builtin(char** arglist) {
        before every prompt. */
     if (strcmp(arglist[0], "jobs") == 0) {
         print_jobs();
+        return 1;
+    }
+
+    /* set (Feature 8): list all defined shell variables. */
+    if (strcmp(arglist[0], "set") == 0) {
+        print_variables();
         return 1;
     }
 

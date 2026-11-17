@@ -38,6 +38,14 @@
  * the then-block, non-zero runs the else-block (else is optional).
  * Nested if-blocks are NOT supported: a line starting with "if"
  * inside a block would be run as an ordinary (unknown) command.
+ *
+ * Feature 8 - shell variables (src/variables.c). A segment that starts
+ * with VARNAME= is an assignment (built-in, no fork); the value may be
+ * quoted ("Hello, World!"). After tokenizing, expand_variables()
+ * replaces $VARNAME tokens with their stored value (or the
+ * environment's, or empty if undefined) before the command runs, so
+ * it works for built-ins, external commands, pipes and if-conditions.
+ * `set` lists all defined variables.
  */
 
 /* Feature 7: max lines stored per then/else block. */
@@ -88,6 +96,16 @@ static int run_single_command(char* segment, int background) {
         return 0; /* empty segment, e.g. a leading ';' or "a && b" */
     }
 
+    /* Feature 8: variable assignment (VARNAME=value, no spaces around
+       '='). A built-in action: store it, no fork, no execution. The
+       check runs before pipe handling, so the whole line is the
+       assignment and the value may contain spaces when quoted
+       (MESSAGE="Hello, World!"). */
+    if (is_assignment_line(segment)) {
+        handle_assignment(segment);
+        return 0;
+    }
+
     /* Feature 5: pipe. If the segment contains '|', split it into two
        commands at the pipe, tokenize each side separately and run them
        through execute_pipe(). (Only one pipe per segment; built-ins do
@@ -101,6 +119,9 @@ static int run_single_command(char* segment, int background) {
         right = tokenize(pipe_pos + 1);
         *pipe_pos = '|'; /* restore: tokenize() copied the tokens, and
                             the jobs list should show the full pipeline */
+        /* Feature 8: expand $VARNAME on both sides of the pipe. */
+        expand_variables(left);
+        expand_variables(right);
         if (left != NULL && right != NULL) {
             if (background) {
                 /* Run the whole pipeline in one forked child so the
@@ -140,6 +161,10 @@ static int run_single_command(char* segment, int background) {
 
     if ((arglist = tokenize(segment)) != NULL) {
         int status;
+        /* Feature 8: expand $VARNAME in the arguments AFTER tokenizing
+           but BEFORE executing, so built-ins (cd $DIR) and external
+           commands (echo $MSG) both see the expanded values. */
+        expand_variables(arglist);
         /* Built-ins run in the shell itself, before any fork().
            Only external commands reach execute(). */
         if (handle_builtin(arglist)) {
