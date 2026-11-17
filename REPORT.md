@@ -332,7 +332,74 @@ chains correctly, but prints the quotes literally (`"First command"`).
 
 ## Feature 7 — The `if-then-else-fi` Control Structure (Release 7, tag `v7`, 10 marks)
 
-_Pending._
+**What was implemented**
+
+- Multi-line `if-then-else-fi`: a line starting with the keyword `if` is
+  intercepted in the main loop (before the `;`/`&` split) and handed to
+  `run_if_statement()` in `src/main.c`, which reads further lines at a
+  secondary `> ` prompt until a line whose first word is `fi`.
+- The lines between `then` and `else`/`fi` are stored in one array, the
+  lines between `else` and `fi` in a second array (max 32 lines each,
+  `MAX_IF_LINES`); the `else` block is optional.
+- The condition is the rest of the `if` line. It is run first, and the
+  branch is picked from its exit status: `0` runs the then-block,
+  non-zero runs the else-block.
+- To make that possible, `execute()` and `execute_pipe()` now **return**
+  the child's exit status instead of always returning 0: foreground
+  `execute()` returns `WEXITSTATUS(status)` (a signal-killed child counts
+  as failure, status 1); `execute_pipe()` returns the **right** child's
+  status (bash rule: a pipeline's status is its last command's status).
+  `run_single_command()` and the new `run_line()` propagate that status
+  (a chained condition is judged by its last segment).
+- Block lines are re-run through `run_line()`, so `;` chaining, `&`
+  background, pipes and redirection work inside a block exactly as on a
+  normal command line. Continuation lines (`then`, `echo ...`, `fi`) are
+  added to both our own history and readline's history, like bash.
+- Syntax errors abort **without executing anything**: bare `if` (no
+  command), a command line before `then`, `else` before `then`, missing
+  `then`, or EOF/Ctrl-D before `fi` — each prints
+  `myshell: syntax error: ...` and the stray lines up to `fi` are
+  consumed, so they are not executed as separate commands.
+- `help` now lists the `if ... then ... else ... fi` construct.
+- Limitation (documented in the code): **nested if-blocks are not
+  supported** — an `if` line inside a block would be run as an unknown
+  external command.
+
+**Key functions / syscalls (viva)**
+
+- `run_if_statement()` (`src/main.c`): parsing + state machine
+  (`seen_then`, `in_else`, `seen_fi`, `ok`), block storage, branch choice.
+- `WEXITSTATUS(status)` on the `waitpid()` status in `execute()` /
+  `execute_pipe()` — the macro that extracts the child's real exit code.
+- `first_token_is()` — keyword matching that does not mistake `ifx` for
+  `if`; `dup_string()` — `strdup()` equivalent without POSIX feature
+  macros (build is `-std=c11`).
+
+**Test evidence** (scripted piped input, `printf '...' | ./bin/myshell`)
+
+- `make clean && make` — clean build, **no errors, no warnings**.
+- `if true` → then-block ran (`T1-THEN-RAN`); `if false` → else-block
+  ran (`T2-ELSE-RAN`); `if false` with no `else` → nothing printed.
+- `if grep root /etc/passwd` → then (`T3-FOUND`); `if grep
+  nosuchpattern123 /etc/passwd` → else (`T4-NOTFOUND`).
+- `if [ -f /tmp/f7test.txt ]` → then (`T6-EXISTS`); missing file →
+  else (`T7-MISSING`).
+- Redirection in the condition: `if grep root /etc/passwd > /dev/null`
+  → then, with no grep output on screen. Pipe in the condition:
+  `if cat /etc/passwd | grep root` → then.
+- `;` chaining inside a block: `echo T10-A ; echo T10-B` printed both.
+- Bad syntax: bare `if` → `myshell: syntax error: expected a command
+  after 'if'`, block not executed; missing `then` → `myshell: syntax
+  error: expected 'then'`, block not executed.
+- Regression (F2–F6): `history` shows the if-block lines numbered
+  (`if true`, `then`, `echo ...`, `fi` as entries 2–5); `!1` re-ran
+  `pwd`; `sleep 1 &` + `jobs` listed the job; `echo hi > file` +
+  `sort < file`; `cat /etc/passwd | grep root` → `root:x:0:0:...`;
+  `help` lists the if-construct; `exit` printed "Shell exited.",
+  shell exit code 0.
+- Release: tag `v7` (annotated), merged to main (`8f198f4`),
+  [Release 7](https://github.com/UsmanXTech/BSDSF24M025-OS-A03/releases/tag/v7)
+  with compiled `bin/myshell` asset (26,704 bytes).
 
 ---
 
