@@ -405,7 +405,82 @@ chains correctly, but prints the quotes literally (`"First command"`).
 
 ## Feature 8 — Shell Variables (Release 8, tag `v8`, 10 marks)
 
-_Pending._
+**What was implemented**
+
+- `VARNAME=value` assignment (no spaces around `=`), handled as a
+  built-in action — no `fork()`, no execution. A line starting with a
+  valid variable name directly followed by `=` is detected in
+  `run_single_command()` (`src/main.c`) *before* tokenizing or pipe
+  handling, so the value may contain spaces when quoted:
+  `MESSAGE="Hello, World!"` stores `Hello, World!` (matching quotes
+  stripped, like bash). Single quotes work the same way; `EMPTY=`
+  stores an empty string; re-assignment replaces the old value.
+- Storage: a singly linked list of key-value pairs
+  (`src/variables.c`, `struct var_node { name, value, next }`) — the
+  PDF's suggested data structure. `set_variable()` inserts a new node
+  or replaces the value in place; `get_variable()` searches the list
+  and falls back to the process environment (`getenv()`), so `$HOME`
+  keeps working.
+- Expansion: after tokenizing but before executing (PDF Task 3),
+  `expand_variables()` walks the arglist and replaces every token
+  starting with `$` by the variable's value — so it works for
+  built-ins (`cd $DIR`), external commands (`echo $MSG`), both sides
+  of a pipe, `;`-chained segments and if-conditions. Each expanded
+  token is a fresh `malloc`'d string (the PDF's warning: the value can
+  be longer than tokenize's 30-byte `ARGLEN` buffer, so writing in
+  place would overflow). Trailing characters after the name are kept
+  (`$MSG!` → value + `!`); an undefined variable expands to the empty
+  string (bash behaviour). A bare `$` or an invalid name
+  (`1BAD=x`) is not an assignment and falls through to `execute()`,
+  which reports "Command not found" — like bash.
+- New built-in `set` (`handle_builtin()`, `src/builtin.c`): prints all
+  defined shell variables as `NAME=value`, one per line.
+  Environment variables are not listed — only variables this shell
+  defined. `help` now lists `set`, `VARNAME=value` and `$VARNAME`.
+- Environment note (sandbox): this VM generation shipped without
+  `libreadline-dev` headers, so the first `make` failed on
+  `readline/history.h`. Fixed by installing `libreadline-dev` +
+  `libncurses-dev` from the local apt cache (`dpkg -i`, the system
+  `apt-get update` held the lock at the time). No code change needed.
+
+**Key functions / syscalls (viva)**
+
+- `is_assignment_line()` / `handle_assignment()` (`src/variables.c`):
+  name validation (letter/`_` first, then alnum/`_`) and quote
+  stripping; `set_variable()` / `get_variable()` / `print_variables()`
+  — linked-list insert-or-replace, lookup with `getenv()` fallback.
+- `expand_variables()` — pre-execution step; fresh allocation per
+  token; `free()` of the old token; undefined → `""`.
+- Hook points in `run_single_command()` (`src/main.c`): assignment
+  check right after trimming (before the pipe split), expansion right
+  after each `tokenize()` (normal path and both pipe sides).
+
+**Test evidence** (scripted piped input, `printf '...' | ./bin/myshell`)
+
+- `make clean && make` — clean build, **no errors, no warnings**.
+- PDF tests: `MSG="hello"` → `set` shows `MSG=hello` → `echo $MSG`
+  prints `hello`; re-assign `MSG="world"` → `echo $MSG` prints
+  `world`; `MESSAGE="Hello, World!"` → `echo $MESSAGE` prints
+  `Hello, World!`; `echo $UNDEFINED` prints an empty line;
+  `VAR1=one` → `echo $VAR1` prints `one`.
+- Extra: `A=foo; echo $A` → `foo` (chaining); `echo $A | cat` →
+  `foo` (pipe expansion); `DIR=/tmp; cd $DIR; pwd` → `/tmp`;
+  `NAME='single quoted'` → `single quoted`; `EMPTY=` → `echo
+  $EMPTY` prints empty; `1BAD=x` → "Command not found" (invalid
+  name); `if true` / `then` / `echo IF-VAR-OK $A` / `fi` → `IF-VAR-OK
+  foo` (expansion inside an if-block); `help` lists `set` and the
+  variable syntax.
+- Limitation (documented): only tokens *starting* with `$` expand —
+  `pre$VAR` and `${VAR}` are not expanded, and the tokenizer is not
+  quote-aware, so `"X${EMPTY}Y"` prints literally. The PDF only
+  requires words beginning with `$`, so this is in spec.
+- Regression (F2–F7): `history` numbered 1–5; `!1` re-executed
+  `EMPTY=`; `echo hi > file` + `sort < file` → `hi`; `sleep 1 &` +
+  `jobs` listed `[1] <pid> sleep 1`; `cat /etc/passwd | grep root` →
+  `root:x:0:0:...`; `exit` printed "Shell exited.", shell exit code 0.
+- Release: tag `v8` (annotated), merged to main (`9d5efee`),
+  [Release 8](https://github.com/UsmanXTech/BSDSF24M025-OS-A03/releases/tag/v8)
+  with compiled `bin/myshell` asset (27,120 bytes).
 
 ---
 
